@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fraudshield"
+version = "1.0.0"
+description = "FraudShield AI - credit card fraud detection ML package"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.0",
+  "scikit-learn>=1.4",
+  "scipy>=1.11",
+  "pyyaml>=6.0",
+  "joblib>=1.3",
+  "xgboost>=2.0",
+  "imbalanced-learn>=0.12",
+  "shap>=0.44",
+  "torch>=2.2",
+]
+
+[project.optional-dependencies]
+tracking = ["mlflow>=2.10"]
+viz = ["matplotlib>=3.8", "seaborn>=0.13"]
+boost = ["lightgbm>=4.0"]
+dev = ["pytest>=8.0", "pytest-cov>=4.1", "ruff>=0.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501", "B008"]
+

@@ -1,0 +1,137 @@
+# FraudShield AI - central configuration.
+# All business logic knobs live here, NOT scattered through the codebase.
+
+project:
+  name: fraudshield
+  random_seed: 42
+
+paths:
+  raw_data: data/raw/creditcard.csv
+  models_dir: models
+  reports_dir: reports
+  figures_dir: reports/figures
+  # MLflow 3.x deprecated the bare file store; SQLite is the supported local backend.
+  mlflow_tracking_uri: sqlite:///mlflow.db
+  mlflow_artifacts_dir: mlartifacts
+
+data:
+  # Column names and the PCA component count are defined once in
+  # fraudshield/data/schema.py - they are a data contract, not a tunable.
+  # Stratified split fractions. Test is held out and touched exactly once.
+  test_size: 0.20
+  val_size: 0.20          # fraction of the post-test-split remainder
+  stratify: true
+
+features:
+  # Time is seconds elapsed since the first transaction in the dataset.
+  # We derive an hour-of-day cyclical encoding; raw Time is dropped because it
+  # is a dataset-collection artifact, not a transferable signal.
+  derive_hour_of_day: true
+  drop_raw_time: true
+  # Amount is heavily right-skewed -> log1p then standard-scale.
+  log_amount: true
+  scaler: standard         # standard | robust
+
+imbalance:
+  # Strategy applied to TRAINING FOLD ONLY. Never to val/test.
+  strategies: [none, class_weight, undersample, smote]
+  default_strategy: class_weight
+  smote_k_neighbors: 5
+  undersample_ratio: 0.10   # majority:minority target ratio after undersampling
+
+threshold:
+  # Candidate operating points swept during threshold optimisation.
+  # The grid extends well below 0.05: with a 100:1 cost ratio the optimum sits
+  # far left, and a grid that stops at 0.05 can silently clip the true minimum.
+  grid: [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30,
+         0.35, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+  # Business objective: expected-cost minimisation.
+  # A missed fraud (FN) is far more expensive than a reviewed false alarm (FP).
+  cost_false_negative: 500.0   # average chargeback + write-off cost, currency units
+  cost_false_positive: 5.0     # manual review / customer-friction cost
+  # Operational guardrail: a queue where most alerts are false burns analyst
+  # trust faster than a few extra missed frauds cost money.
+  min_precision: 0.50
+  # The expected-cost surface is nearly flat (the whole grid spans <10% on this
+  # dataset) while precision varies by a factor of two across it. With only ~79
+  # validation positives, an argmin decided by one or two fraud cases is fitting
+  # noise. So: among thresholds whose cost is within this fraction of the
+  # minimum, prefer the most precise one. Set to 0 to take the strict argmin.
+  cost_tolerance: 0.05
+  objective: expected_cost     # expected_cost | f1 | max_recall_at_precision
+
+risk_engine:
+  # Deterministic probability -> risk band mapping. Config-driven, not hardcoded.
+  bands:
+    - {name: LOW,      min_probability: 0.00}
+    - {name: MEDIUM,   min_probability: 0.30}
+    - {name: HIGH,     min_probability: 0.70}
+    - {name: CRITICAL, min_probability: 0.90}
+  actions:
+    LOW: ALLOW
+    MEDIUM: ALLOW_WITH_MONITORING
+    HIGH: HOLD_FOR_MANUAL_REVIEW
+    CRITICAL: BLOCK_AND_ESCALATE
+
+models:
+  logistic_regression:
+    max_iter: 2000
+    C: 1.0
+    solver: lbfgs
+  random_forest:
+    n_estimators: 200
+    max_depth: 12
+    min_samples_leaf: 2
+    n_jobs: -1
+  xgboost:
+    n_estimators: 400
+    max_depth: 5
+    learning_rate: 0.08
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
+    tree_method: hist
+  lightgbm:
+    # LightGBM grows leaf-wise, so it overfits far more readily than XGBoost's
+    # level-wise growth when only ~315 positives exist. Three deliberate
+    # differences from the XGBoost block, all measured on validation:
+    #   * reg_lambda is essential here (omitting it cost ~0.43 PR-AUC)
+    #   * scale_pos_weight=578 is catastrophic for this learner, so it is off
+    #     (see use_scale_pos_weight below); regularisation handles imbalance
+    #   * subsample is omitted because LightGBM ignores it unless
+    #     subsample_freq > 0, which made results worse here
+    n_estimators: 300
+    num_leaves: 16
+    learning_rate: 0.05
+    min_child_samples: 30
+    reg_lambda: 5.0
+    use_scale_pos_weight: false
+    verbose: -1
+  mlp:
+    hidden_dims: [128, 64]
+    dropout: 0.3
+    lr: 0.001
+    weight_decay: 0.00001
+    batch_size: 2048
+    max_epochs: 60
+    early_stopping_patience: 8
+    grad_clip: 5.0
+  autoencoder:
+    encoder_dims: [64, 32]
+    latent_dim: 16
+    dropout: 0.1
+    lr: 0.001
+    batch_size: 2048
+    max_epochs: 60
+    early_stopping_patience: 8
+
+selection:
+  # Primary model-selection metric. PR-AUC is threshold-free and, unlike ROC-AUC,
+  # does not flatter a model on a 0.17%-positive problem.
+  primary_metric: pr_auc
+  tie_breaker: recall_at_selected_threshold
+
+evaluation:
+  hyperparameter_search: true
+  hpo_n_iter: 12
+  cv_folds: 3

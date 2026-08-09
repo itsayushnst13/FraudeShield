@@ -1,0 +1,56 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: fraudshield-backend:1.0.0
+    environment:
+      MODEL_DIR: /app/models/fraud_detector
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MAX_BATCH_SIZE: ${MAX_BATCH_SIZE:-1000}
+      # Absent LLM credentials are fine: the agent falls back to a
+      # deterministic report rather than failing.
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+    volumes:
+      # Models are mounted, not baked in, so retraining does not require a rebuild.
+      - ./models:/app/models:ro
+      - ./configs:/app/configs:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: /api
+    image: fraudshield-frontend:1.0.0
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/mlartifacts
+    volumes:
+      - ./mlflow.db:/mlflow/mlflow.db
+      - ./mlartifacts:/mlflow/mlartifacts
+    ports:
+      - "5000:5000"
+    profiles: ["tracking"]

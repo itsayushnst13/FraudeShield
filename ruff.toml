@@ -1,0 +1,15 @@
+# Shared lint/format configuration for the whole repository.
+line-length = 100
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+  "E501",   # line length is enforced by the formatter
+  "B008",   # FastAPI's Depends()/Field() defaults are idiomatic in signatures
+  "SIM108", # ternaries are not always clearer than an if/else
+]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["E402"]  # sys.path bootstrap must precede imports in conftest
+"ml/scripts/*" = ["E402"] # _bootstrap import must precede package imports
