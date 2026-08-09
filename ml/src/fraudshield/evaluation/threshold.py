@@ -120,8 +120,7 @@ def select_threshold(
             f"at {best['expected_cost']:.0f}, subject to precision >= {min_precision:.2f}"
             f"{'' if guardrail_applied else ' (guardrail not satisfiable, relaxed)'}. "
             f"Catches {int(best['true_positives'])} fraud, misses "
-            f"{int(best['false_negatives'])}, raises {int(best['alerts'])} alerts."
-            + tie_note
+            f"{int(best['false_negatives'])}, raises {int(best['alerts'])} alerts." + tie_note
         )
 
     choice = ThresholdChoice(
