@@ -26,7 +26,7 @@ RUN pip install -r /app/backend/requirements.txt
 
 COPY backend/app /app/backend/app
 COPY configs /app/configs
-
+COPY models /app/models
 # Run as a non-root user.
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
 USER appuser
